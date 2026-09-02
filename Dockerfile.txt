@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+# Node.js (for the proxy server) + curl (health checks in proxy-up.sh)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends nodejs curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python deps — installed at BUILD time, not on every start
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Bake the bore tunnel binary at build time (proxy-up.sh reuses it if present)
+RUN set -e; \
+    curl -sL --max-time 60 -o /tmp/bore.tar.gz \
+      "https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-x86_64-unknown-linux-musl.tar.gz"; \
+    tar xzf /tmp/bore.tar.gz -C /tmp; \
+    if [ -x /tmp/bore ]; then cp /tmp/bore /usr/local/bin/bore; \
+    else cp "$(find /tmp -maxdepth 2 -type f -name bore | head -1)" /usr/local/bin/bore; fi; \
+    chmod +x /usr/local/bin/bore; \
+    rm -rf /tmp/bore /tmp/bore.tar.gz
+
+COPY main.py proxy-up.sh start.sh ./
+RUN chmod +x proxy-up.sh start.sh
+
+# Startup command can also be overridden in the JustRunMy panel
+CMD ["bash", "start.sh"]
